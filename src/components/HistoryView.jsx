@@ -1,20 +1,12 @@
 import React, { useState } from 'react'
+import { Button, Tag, Typography, Space, Empty } from 'antd'
+import { RollbackOutlined, CopyOutlined, ClockCircleOutlined } from '@ant-design/icons'
+
+const { Text } = Typography
 
 const fmt = (iso) => {
   const d = new Date(iso)
   return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
-
-const preStyle = {
-  padding: '12px',
-  borderRadius: '6px',
-  fontSize: '12px',
-  fontFamily: 'monospace',
-  whiteSpace: 'pre-wrap',
-  overflow: 'auto',
-  background: 'var(--notion-hover)',
-  border: '1px solid var(--notion-border)',
-  color: 'var(--notion-text-muted)',
 }
 
 export default function HistoryView({ history = [], onApplyPrompt }) {
@@ -22,108 +14,109 @@ export default function HistoryView({ history = [], onApplyPrompt }) {
 
   if (history.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12" style={{ color: 'var(--notion-text-faint)' }}>
-        <svg className="w-8 h-8 mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <p className="text-sm">还没有测试记录</p>
-      </div>
+      <Empty
+        image={<ClockCircleOutlined style={{ fontSize: 32, color: 'var(--notion-text-faint)' }} />}
+        description={<Text style={{ fontSize: 13, color: 'var(--notion-text-faint)' }}>还没有测试记录</Text>}
+        style={{ padding: '48px 0' }}
+      />
     )
   }
 
   const entry = selected !== null ? history[selected] : null
 
   return (
-    <div className="flex gap-3 h-full min-h-0">
-      {/* 历史列表 */}
-      <div className="w-40 shrink-0 space-y-0.5 overflow-y-auto">
+    <div className="history-view">
+      {/* List */}
+      <div className="history-list">
         {history.map((h, i) => (
           <button
             key={h.id || i}
-            className="w-full text-left px-2.5 py-2 rounded-lg transition-colors text-xs"
-            style={{
-              background: selected === i ? 'var(--notion-hover)' : 'transparent',
-              border: selected === i ? '1px solid var(--notion-border)' : '1px solid transparent',
-              color: 'var(--notion-text-primary)',
-            }}
+            className={`history-item ${selected === i ? 'active' : ''}`}
             onClick={() => setSelected(i)}
           >
-            <div className="truncate font-mono" style={{ color: 'var(--notion-text-muted)' }}>{h.model}</div>
-            <div className="mt-0.5" style={{ color: 'var(--notion-text-faint)' }}>{fmt(h.time)}</div>
-            {h.elapsed && <div style={{ color: 'var(--notion-text-faint)' }}>{h.elapsed}s</div>}
+            <div className="history-model">{h.model}</div>
+            <div className="history-time">{fmt(h.time)}</div>
+            {h.elapsed && <div className="history-time">{h.elapsed}s</div>}
           </button>
         ))}
       </div>
 
-      {/* 详情 */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
+      {/* Detail */}
+      <div className="history-detail">
         {!entry ? (
-          <p className="text-xs py-4" style={{ color: 'var(--notion-text-faint)' }}>← 选择一条记录查看详情</p>
+          <Text style={{ fontSize: 12, color: 'var(--notion-text-faint)', display: 'block', paddingTop: 16 }}>
+            ← 选择一条记录查看详情
+          </Text>
         ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs" style={{ color: 'var(--notion-text-muted)' }}>{fmt(entry.time)} · {entry.model}</span>
+          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)' }}>
+                {fmt(entry.time)} · {entry.model}
+              </Text>
               {onApplyPrompt && entry.systemPrompt && (
-                <button
-                  className="btn-ghost text-xs py-1"
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<RollbackOutlined />}
                   onClick={() => onApplyPrompt(entry.systemPrompt)}
-                  title="将此次使用的 System Prompt 覆盖到编辑器"
+                  style={{ fontSize: 12, color: 'var(--notion-text-muted)' }}
                 >
-                  ↩ 还原此 Prompt
-                </button>
+                  还原此 Prompt
+                </Button>
               )}
             </div>
 
-            {/* 变量 */}
+            {/* Variables */}
             {entry.variables && Object.keys(entry.variables).length > 0 && (
               <div>
-                <p className="text-xs mb-1" style={{ color: 'var(--notion-text-muted)' }}>变量</p>
-                <div className="flex flex-wrap gap-1.5">
+                <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)', display: 'block', marginBottom: 4 }}>变量</Text>
+                <Space size={6} wrap>
                   {Object.entries(entry.variables).map(([k, v]) => (
-                    <span key={k} className="text-xs font-mono px-2 py-0.5 rounded"
-                      style={{ background: 'var(--notion-hover)', border: '1px solid var(--notion-border)', color: 'var(--notion-text-primary)' }}>
+                    <Tag key={k} style={{ fontFamily: 'monospace', fontSize: 12 }}>
                       <span style={{ color: '#b45309' }}>{k}</span>
                       <span style={{ color: 'var(--notion-text-faint)' }}> = </span>
                       <span>{v || '(空)'}</span>
-                    </span>
+                    </Tag>
                   ))}
-                </div>
+                </Space>
               </div>
             )}
 
             {/* System Prompt */}
             <div>
-              <p className="text-xs mb-1" style={{ color: 'var(--notion-text-muted)' }}>System Prompt</p>
-              <pre style={{ ...preStyle, maxHeight: 160 }}>
+              <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)', display: 'block', marginBottom: 4 }}>System Prompt</Text>
+              <pre className="history-pre" style={{ maxHeight: 160 }}>
                 {entry.systemPrompt || entry.prompt || '(空)'}
               </pre>
             </div>
 
-            {/* 用户输入 */}
+            {/* User input */}
             {entry.userInput && (
               <div>
-                <p className="text-xs mb-1" style={{ color: 'var(--notion-text-muted)' }}>用户消息</p>
-                <pre style={{ ...preStyle, maxHeight: 96, color: '#1d5fa8' }}>
+                <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)', display: 'block', marginBottom: 4 }}>用户消息</Text>
+                <pre className="history-pre" style={{ maxHeight: 96, color: '#1d5fa8' }}>
                   {entry.userInput}
                 </pre>
               </div>
             )}
 
-            {/* 输出 */}
+            {/* Output */}
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs" style={{ color: 'var(--notion-text-muted)' }}>模型输出</p>
-                <button
-                  className="text-xs hover:underline"
-                  style={{ color: 'var(--notion-text-faint)' }}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)' }}>模型输出</Text>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CopyOutlined />}
                   onClick={() => navigator.clipboard.writeText(entry.output)}
-                >复制</button>
+                  style={{ fontSize: 12, color: 'var(--notion-text-faint)' }}
+                >复制</Button>
               </div>
-              <pre style={{ ...preStyle, maxHeight: 240, color: 'var(--notion-text-primary)' }}>
+              <pre className="history-pre" style={{ maxHeight: 240, color: 'var(--notion-text-primary)' }}>
                 {entry.output || '(无输出)'}
               </pre>
             </div>
-          </div>
+          </Space>
         )}
       </div>
     </div>

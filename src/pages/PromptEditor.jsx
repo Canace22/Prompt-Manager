@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import {
+  Button, Input, Select, Tag, Tabs, Typography, Space, Popconfirm, Tooltip,
+} from 'antd'
+import {
+  LeftOutlined, StarOutlined, EllipsisOutlined, DeleteOutlined,
+  LoadingOutlined, ThunderboltOutlined, RightOutlined,
+} from '@ant-design/icons'
 import { getById, update, addHistory, remove } from '../store/promptStore'
 import TestPanel from '../components/TestPanel'
 import HistoryView from '../components/HistoryView'
+
+const { Text } = Typography
+const { TextArea } = Input
 
 const pushToNotion = async (id) => {
   const r = await fetch('/api/notion/push', {
@@ -13,13 +23,18 @@ const pushToNotion = async (id) => {
   return r.json()
 }
 
-const TABS = ['编辑', '测试', '历史']
+const MODEL_OPTIONS = [
+  { value: 'qwen-turbo', label: 'qwen-turbo' },
+  { value: 'qwen-plus', label: 'qwen-plus' },
+  { value: 'qwen-max', label: 'qwen-max' },
+  { value: 'qwen-long', label: 'qwen-long' },
+]
 
 export default function PromptEditor({ onDataChange }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [prompt, setPrompt] = useState(null)
-  const [activeTab, setActiveTab] = useState('编辑')
+  const [activeTab, setActiveTab] = useState('edit')
   const [draft, setDraft] = useState({})
   const [tagInput, setTagInput] = useState('')
   const [saved, setSaved] = useState(true)
@@ -55,10 +70,8 @@ export default function PromptEditor({ onDataChange }) {
   }
 
   const handleDelete = async () => {
-    if (window.confirm(`确认删除「${prompt.name}」？`)) {
-      await remove(id)
-      navigate('/')
-    }
+    await remove(id)
+    navigate('/')
   }
 
   const handleSaveHistory = async (entry) => {
@@ -85,7 +98,7 @@ export default function PromptEditor({ onDataChange }) {
 
   const handleApplyPrompt = (content) => {
     setField('content', content)
-    setActiveTab('编辑')
+    setActiveTab('edit')
   }
 
   const handleAddTag = (e) => {
@@ -117,234 +130,256 @@ export default function PromptEditor({ onDataChange }) {
     return [...new Set(names)]
   })()
 
-  return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ background: 'var(--notion-surface)' }}>
-      {/* ── Breadcrumb bar ── */}
-      <header className="flex items-center justify-between px-6 py-2.5 border-b border-notion-border shrink-0" style={{ minHeight: 44 }}>
-        <div className="flex items-center gap-1.5 text-notion-sm text-notion-text-muted">
-          <button
-            className="sidebar-item px-1.5 py-0.5"
-            onClick={() => navigate('/')}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <span>⚡ Prompt</span>
-          <svg className="w-3 h-3 text-notion-text-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-          <span className="text-notion-text-primary truncate max-w-48">{prompt.name}</span>
+  const tabItems = [
+    {
+      key: 'edit',
+      label: '编辑',
+      children: (
+        <div style={{ paddingTop: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ fontSize: 12, color: 'var(--notion-text-faint)' }}>
+              Prompt 内容 · 使用 {`{{变量名}}`} 定义变量
+            </Text>
+            <Space size={8}>
+              <Button size="small" type="primary" onClick={handleSave}>
+                {saved ? '已保存' : '保存'}
+              </Button>
+              <Popconfirm
+                title={`确认删除「${prompt.name}」？`}
+                onConfirm={handleDelete}
+                okText="删除"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+              >
+                <Button size="small" danger>删除</Button>
+              </Popconfirm>
+            </Space>
+          </div>
+          <TextArea
+            style={{ fontFamily: 'monospace', fontSize: 13, lineHeight: 1.6, minHeight: 360 }}
+            placeholder={'在这里编写你的 Prompt...\n\n支持 {{变量名}} 占位符，在测试时填写具体值。\n\n示例：你是一个专业的{{role}}，请用{{language}}回答用户问题。'}
+            value={draft.content || ''}
+            onChange={e => setField('content', e.target.value)}
+            autoSize={{ minRows: 14 }}
+          />
         </div>
-        <div className="flex items-center gap-1">
-          {pushMsg && (
-            <span className={`text-xs px-2 ${pushMsg.includes('失败') ? 'text-red-400' : 'text-green-400'}`}>
-              {pushMsg}
-            </span>
+      ),
+    },
+    {
+      key: 'test',
+      label: '测试',
+      children: (
+        <div style={{ paddingTop: 16 }}>
+          <TestPanel
+            prompt={{ ...prompt, ...draft, variables, varMeta: draft.varMeta || {} }}
+            onSaveHistory={handleSaveHistory}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'history',
+      label: (
+        <span>
+          历史
+          {(prompt.history?.length || 0) > 0 && (
+            <Tag style={{ marginLeft: 4, fontSize: 10 }}>{prompt.history.length}</Tag>
           )}
-          <span className={`text-xs px-2 ${saved ? 'text-notion-text-faint' : 'text-amber-400'}`}>
+        </span>
+      ),
+      children: (
+        <div style={{ paddingTop: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <HistoryView
+            history={prompt.history || []}
+            onApplyPrompt={handleApplyPrompt}
+          />
+        </div>
+      ),
+    },
+  ]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: 'var(--notion-surface)' }}>
+      {/* Header */}
+      <header className="page-header">
+        <div className="breadcrumb">
+          <Button
+            type="text"
+            size="small"
+            icon={<LeftOutlined />}
+            onClick={() => navigate('/')}
+            style={{ color: 'var(--notion-text-muted)', padding: '0 4px' }}
+          />
+          <span>
+            <ThunderboltOutlined style={{ marginRight: 4 }} />
+            Prompt
+          </span>
+          <RightOutlined style={{ fontSize: 11, color: 'var(--notion-text-faint)' }} />
+          <Text style={{ fontSize: 13, color: 'var(--notion-text-primary)', maxWidth: 192, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {prompt.name}
+          </Text>
+        </div>
+        <div className="header-actions">
+          {pushMsg && (
+            <span className={`push-msg ${pushMsg.includes('失败') ? 'error' : 'success'}`}>{pushMsg}</span>
+          )}
+          <span className={`save-badge ${saved ? 'saved' : 'unsaved'}`}>
             {saved ? 'Saved' : 'Editing...'}
           </span>
-          <button
-            className="btn-ghost text-xs"
+          <Button
+            type="text"
+            size="small"
             onClick={handlePushToNotion}
             disabled={pushing}
+            icon={pushing ? <LoadingOutlined /> : null}
+            style={{ color: 'var(--notion-text-muted)', fontSize: 12 }}
           >
-            {pushing ? (
-              <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            ) : '↑ Notion'}
-          </button>
-          <button className="btn-ghost" title="收藏">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-            </svg>
-          </button>
-          <button className="btn-ghost" title="更多">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h.01M12 12h.01M19 12h.01" />
-            </svg>
-          </button>
+            {!pushing && '↑ Notion'}
+          </Button>
+          <Button type="text" size="small" icon={<StarOutlined />} style={{ color: 'var(--notion-text-muted)' }} />
+          <Button type="text" size="small" icon={<EllipsisOutlined />} style={{ color: 'var(--notion-text-muted)' }} />
         </div>
       </header>
 
-      {/* ── Page content ── */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Title area */}
-        <div className="px-16 pt-12 pb-2">
-          <input
-            className="w-full bg-transparent text-4xl font-bold text-notion-text-primary focus:outline-none placeholder-notion-text-faint"
-            style={{ fontWeight: 700 }}
+      {/* Body */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {/* Title */}
+        <div style={{ padding: '48px 64px 8px' }}>
+          <Input
+            variant="borderless"
+            style={{ fontSize: 36, fontWeight: 700, color: 'var(--notion-text-primary)', padding: 0 }}
             value={draft.name || ''}
             onChange={e => setField('name', e.target.value)}
             placeholder="Untitled"
           />
         </div>
 
-        {/* Properties block */}
-        <div className="px-16 py-4 border-b border-notion-border space-y-2">
-          {/* Description property */}
-          <div className="flex items-start gap-6">
-            <span className="text-notion-sm text-notion-text-faint w-28 shrink-0 pt-0.5">描述</span>
-            <input
-              className="flex-1 bg-transparent text-notion-sm text-notion-text-primary focus:outline-none placeholder-notion-text-faint"
-              placeholder="Add a description..."
-              value={draft.description || ''}
-              onChange={e => setField('description', e.target.value)}
-            />
-          </div>
-
-          {/* Model property */}
-          <div className="flex items-center gap-6">
-            <span className="text-notion-sm text-notion-text-faint w-28 shrink-0">模型</span>
-            <select
-              className="bg-transparent text-notion-sm text-notion-text-primary focus:outline-none cursor-pointer"
-              value={draft.model || 'qwen-turbo'}
-              onChange={e => setField('model', e.target.value)}
-            >
-              <option value="qwen-turbo">qwen-turbo</option>
-              <option value="qwen-plus">qwen-plus</option>
-              <option value="qwen-max">qwen-max</option>
-              <option value="qwen-long">qwen-long</option>
-            </select>
-          </div>
-
-          {/* Tags property */}
-          <div className="flex items-start gap-6">
-            <span className="text-notion-sm text-notion-text-faint w-28 shrink-0 pt-1">标签</span>
-            <div className="flex flex-wrap gap-1.5 flex-1">
-              {draft.tags?.map(tag => (
-                <span
-                  key={tag}
-                  className="tag tag-default cursor-pointer hover:opacity-70 transition-opacity"
-                  onClick={() => handleRemoveTag(tag)}
-                  title="点击移除"
-                >{tag} ×</span>
-              ))}
-              <input
-                className="bg-transparent text-notion-sm text-notion-text-muted focus:outline-none placeholder-notion-text-faint min-w-16"
-                placeholder="+ 添加标签"
-                value={tagInput}
-                onChange={e => setTagInput(e.target.value)}
-                onKeyDown={handleAddTag}
+        {/* Properties */}
+        <div style={{ padding: '0 64px' }} className="editor-properties">
+          {/* Description */}
+          <div className="property-row">
+            <span className="property-label">描述</span>
+            <div className="property-value">
+              <Input
+                variant="borderless"
+                style={{ fontSize: 13, color: 'var(--notion-text-primary)', padding: 0 }}
+                placeholder="Add a description..."
+                value={draft.description || ''}
+                onChange={e => setField('description', e.target.value)}
               />
             </div>
           </div>
 
-          {/* Variables property */}
+          {/* Model */}
+          <div className="property-row">
+            <span className="property-label">模型</span>
+            <div className="property-value">
+              <Select
+                variant="borderless"
+                style={{ fontSize: 13, minWidth: 140 }}
+                value={draft.model || 'qwen-turbo'}
+                onChange={v => setField('model', v)}
+                options={MODEL_OPTIONS}
+                size="small"
+              />
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div className="property-row">
+            <span className="property-label" style={{ paddingTop: 4 }}>标签</span>
+            <div className="property-value">
+              <Space size={6} wrap>
+                {draft.tags?.map(tag => (
+                  <Tag
+                    key={tag}
+                    closable
+                    onClose={() => handleRemoveTag(tag)}
+                    style={{ cursor: 'default' }}
+                  >{tag}</Tag>
+                ))}
+                <Input
+                  size="small"
+                  variant="borderless"
+                  style={{ fontSize: 13, color: 'var(--notion-text-muted)', width: 80, padding: 0 }}
+                  placeholder="+ 添加标签"
+                  value={tagInput}
+                  onChange={e => setTagInput(e.target.value)}
+                  onKeyDown={handleAddTag}
+                />
+              </Space>
+            </div>
+          </div>
+
+          {/* Variables */}
           {variables.length > 0 && (
-            <div className="flex items-start gap-6">
-              <span className="text-notion-sm text-notion-text-faint w-28 shrink-0 pt-1">变量</span>
-              <div className="flex flex-wrap gap-1.5">
-                {variables.map(v => {
-                  const isImage = draft.varMeta?.[v]?.type === 'image'
-                  return (
-                    <button
-                      key={v}
-                      className={`text-xs px-2 py-0.5 rounded-md font-mono border transition-colors ${isImage ? 'border-blue-300 text-blue-700' : 'border-amber-300 text-amber-700'}`}
-                      style={{ background: isImage ? '#dbeafe' : '#fef3c7' }}
-                      onClick={() => {
-                        const next = { ...(draft.varMeta || {}) }
-                        next[v] = { type: isImage ? 'text' : 'image' }
-                        setField('varMeta', next)
-                      }}
-                      title={isImage ? '切换为文本' : '切换为图片'}
-                    >
-                      {`{{${v}}}`} {isImage ? '🖼' : 'T'}
-                    </button>
-                  )
-                })}
+            <div className="property-row">
+              <span className="property-label" style={{ paddingTop: 4 }}>变量</span>
+              <div className="property-value">
+                <Space size={6} wrap>
+                  {variables.map(v => {
+                    const isImage = draft.varMeta?.[v]?.type === 'image'
+                    return (
+                      <Tooltip key={v} title={isImage ? '切换为文本' : '切换为图片'}>
+                        <Tag
+                          color={isImage ? 'blue' : 'gold'}
+                          style={{ cursor: 'pointer', fontFamily: 'monospace', fontSize: 12 }}
+                          onClick={() => {
+                            const next = { ...(draft.varMeta || {}) }
+                            next[v] = { type: isImage ? 'text' : 'image' }
+                            setField('varMeta', next)
+                          }}
+                        >
+                          {`{{${v}}}`} {isImage ? '🖼' : 'T'}
+                        </Tag>
+                      </Tooltip>
+                    )
+                  })}
+                </Space>
               </div>
             </div>
           )}
 
-          {/* Notion sync status */}
-          <div className="flex items-center gap-6">
-            <span className="text-notion-sm text-notion-text-faint w-28 shrink-0">Notion</span>
-            {prompt.notionId ? (
-              <a
-                href={`https://www.notion.so/${prompt.notionId.replace(/-/g, '')}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-notion-sm text-notion-blue-text hover:underline flex items-center gap-1"
-                onClick={e => e.stopPropagation()}
-              >
-                在 Notion 查看 ↗
-              </a>
-            ) : (
-              <span className="text-notion-sm text-notion-text-faint">未同步</span>
-            )}
+          {/* Notion */}
+          <div className="property-row">
+            <span className="property-label">Notion</span>
+            <div className="property-value">
+              {prompt.notionId ? (
+                <a
+                  href={`https://www.notion.so/${prompt.notionId.replace(/-/g, '')}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ fontSize: 13, color: 'var(--notion-blue)' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  在 Notion 查看 ↗
+                </a>
+              ) : (
+                <Text style={{ fontSize: 13, color: 'var(--notion-text-faint)' }}>未同步</Text>
+              )}
+            </div>
           </div>
 
           {/* Meta */}
-          <div className="flex items-center gap-6">
-            <span className="text-notion-sm text-notion-text-faint w-28 shrink-0">记录</span>
-            <span className="text-notion-sm text-notion-text-faint">
-              创建 {new Date(prompt.createdAt).toLocaleDateString('zh-CN')} · 更新 {new Date(prompt.updatedAt).toLocaleDateString('zh-CN')} · {prompt.history?.length || 0} 次测试
-            </span>
+          <div className="property-row">
+            <span className="property-label">记录</span>
+            <div className="property-value">
+              <Text style={{ fontSize: 13, color: 'var(--notion-text-faint)' }}>
+                创建 {new Date(prompt.createdAt).toLocaleDateString('zh-CN')} · 更新 {new Date(prompt.updatedAt).toLocaleDateString('zh-CN')} · {prompt.history?.length || 0} 次测试
+              </Text>
+            </div>
           </div>
         </div>
 
-        {/* ── Tab area ── */}
-        <div className="px-16">
-          <div className="flex items-center gap-0 border-b border-notion-border mt-4">
-            {TABS.map(tab => (
-              <button
-                key={tab}
-                className={`view-tab ${activeTab === tab ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab}
-                {tab === '历史' && (prompt.history?.length || 0) > 0 && (
-                  <span className="ml-1 text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--notion-hover)', color: 'var(--notion-text-faint)' }}>
-                    {prompt.history.length}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          {/* Editor */}
-          {activeTab === '编辑' && (
-            <div className="py-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-notion-text-faint">Prompt 内容 · 使用 {`{{变量名}}`} 定义变量</span>
-                <div className="flex items-center gap-2">
-                  <button className="btn-primary text-xs" onClick={handleSave}>
-                    {saved ? '已保存' : '保存'}
-                  </button>
-                  <button className="btn-danger text-xs" onClick={handleDelete}>删除</button>
-                </div>
-              </div>
-              <textarea
-                className="input font-mono text-sm leading-relaxed resize-none"
-                style={{ minHeight: 360 }}
-                placeholder={'在这里编写你的 Prompt...\n\n支持 {{变量名}} 占位符，在测试时填写具体值。\n\n示例：你是一个专业的{{role}}，请用{{language}}回答用户问题。'}
-                value={draft.content || ''}
-                onChange={e => setField('content', e.target.value)}
-              />
-            </div>
-          )}
-
-          {activeTab === '测试' && (
-            <div className="py-4 overflow-y-auto">
-              <TestPanel
-                prompt={{ ...prompt, ...draft, variables, varMeta: draft.varMeta || {} }}
-                onSaveHistory={handleSaveHistory}
-              />
-            </div>
-          )}
-
-          {activeTab === '历史' && (
-            <div className="py-4 overflow-hidden flex flex-col">
-              <HistoryView
-                history={prompt.history || []}
-                onApplyPrompt={handleApplyPrompt}
-              />
-            </div>
-          )}
+        {/* Tabs */}
+        <div style={{ padding: '0 64px' }}>
+          <Tabs
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            items={tabItems}
+            size="small"
+            style={{ marginTop: 8 }}
+          />
         </div>
       </div>
     </div>

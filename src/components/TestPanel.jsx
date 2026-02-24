@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { Button, Select, Input, Typography, Space, Collapse } from 'antd'
+import { PlayCircleOutlined, StopOutlined, CopyOutlined, LoadingOutlined } from '@ant-design/icons'
 import { fillVariables } from '../store/promptStore'
 
-// 将 File 对象转成 base64 data URL
+const { Text } = Typography
+const { TextArea } = Input
+
 const fileToBase64 = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -10,7 +14,6 @@ const fileToBase64 = (file) =>
     reader.readAsDataURL(file)
   })
 
-// 图片变量上传控件（本地文件或粘贴 URL）
 function ImageVarInput({ value, onChange }) {
   const fileRef = useRef(null)
 
@@ -32,25 +35,21 @@ function ImageVarInput({ value, onChange }) {
   }, [handleFile])
 
   return (
-    <div className="flex-1 flex flex-col gap-1.5">
+    <div className="image-var-input">
       {value ? (
-        <div className="relative group w-full">
-          <img
-            src={value}
-            alt="已选图片"
-            className="max-h-32 rounded-lg object-contain"
-            style={{ border: '1px solid var(--notion-border)', background: 'var(--notion-hover)' }}
-          />
-          <button
-            className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-500"
-            style={{ background: 'var(--notion-surface)', color: 'var(--notion-text-muted)' }}
+        <div className="image-preview">
+          <img src={value} alt="已选图片" />
+          <Button
+            size="small"
+            danger
+            style={{ position: 'absolute', top: 4, right: 4, opacity: 0 }}
+            className="remove-btn"
             onClick={() => onChange('')}
-          >移除</button>
+          >移除</Button>
         </div>
       ) : (
         <div
-          className="rounded-lg p-3 text-center cursor-pointer text-xs transition-colors hover:text-[var(--notion-text-primary)]"
-          style={{ border: '1.5px dashed var(--notion-border)', color: 'var(--notion-text-faint)' }}
+          className="drop-zone"
           onClick={() => fileRef.current?.click()}
           onDrop={handleDrop}
           onDragOver={e => e.preventDefault()}
@@ -61,25 +60,25 @@ function ImageVarInput({ value, onChange }) {
           点击上传 / 拖拽 / 粘贴图片
         </div>
       )}
-      <input
-        type="text"
-        className="input text-xs"
+      <Input
+        size="small"
         placeholder="或直接输入图片 URL"
         value={value.startsWith('data:') ? '' : value}
         onChange={e => onChange(e.target.value)}
+        style={{ fontSize: 12 }}
       />
       <input
         ref={fileRef}
         type="file"
         accept="image/*"
-        className="hidden"
+        style={{ display: 'none' }}
         onChange={e => handleFile(e.target.files?.[0])}
       />
     </div>
   )
 }
 
-const MODELS = [
+const MODEL_OPTIONS = [
   { value: 'qwen-turbo', label: 'Qwen Turbo（快）' },
   { value: 'qwen-plus', label: 'Qwen Plus（均衡）' },
   { value: 'qwen-max', label: 'Qwen Max（强）' },
@@ -97,7 +96,6 @@ export default function TestPanel({ prompt, onSaveHistory }) {
   const abortRef = useRef(null)
   const outputRef = useRef(null)
 
-  // 当 prompt 变量变化时，同步 varValues
   useEffect(() => {
     setVarValues(prev => {
       const next = {}
@@ -106,7 +104,6 @@ export default function TestPanel({ prompt, onSaveHistory }) {
     })
   }, [prompt.variables?.join(',')])
 
-  // 输出自动滚动到底部
   useEffect(() => {
     if (outputRef.current) {
       outputRef.current.scrollTop = outputRef.current.scrollHeight
@@ -114,7 +111,6 @@ export default function TestPanel({ prompt, onSaveHistory }) {
   }, [output])
 
   const buildMessages = () => {
-    // 文本变量直接替换；图片变量用占位符替换（保留 {{var}} 以便后续处理）
     const textVarValues = {}
     ;(prompt.variables || []).forEach(v => {
       const isImage = prompt.varMeta?.[v]?.type === 'image'
@@ -122,15 +118,12 @@ export default function TestPanel({ prompt, onSaveHistory }) {
     })
 
     const systemContent = fillVariables(prompt.content, textVarValues)
-
-    // 检测是否有图片变量被填写
     const imageVars = (prompt.variables || []).filter(
       v => prompt.varMeta?.[v]?.type === 'image' && varValues[v]
     )
 
     let userContent
     if (imageVars.length > 0) {
-      // 多模态：图片 + 文字拼在 user 消息里
       const parts = imageVars.map(v => ({
         type: 'image_url',
         image_url: { url: varValues[v] },
@@ -144,9 +137,7 @@ export default function TestPanel({ prompt, onSaveHistory }) {
     }
 
     const msgs = [{ role: 'system', content: systemContent }]
-    if (userContent) {
-      msgs.push({ role: 'user', content: userContent })
-    }
+    if (userContent) msgs.push({ role: 'user', content: userContent })
     return msgs
   }
 
@@ -191,14 +182,13 @@ export default function TestPanel({ prompt, onSaveHistory }) {
           try {
             const json = JSON.parse(data)
             const raw = json?.output?.choices?.[0]?.message?.content
-            // 多模态返回 content 是数组 [{text:'...'}, ...]，文本返回是字符串
             const delta = Array.isArray(raw)
               ? raw.map(p => p.text ?? '').join('')
               : (raw || '')
             fullOutput += delta
             setOutput(fullOutput)
           } catch {
-            // 忽略解析错误
+            // skip parse errors
           }
         }
       }
@@ -214,9 +204,7 @@ export default function TestPanel({ prompt, onSaveHistory }) {
         elapsed: cost,
       })
     } catch (err) {
-      if (err.name !== 'AbortError') {
-        setError(err.message)
-      }
+      if (err.name !== 'AbortError') setError(err.message)
     } finally {
       setLoading(false)
     }
@@ -230,41 +218,40 @@ export default function TestPanel({ prompt, onSaveHistory }) {
   const previewPrompt = fillVariables(prompt.content, varValues)
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* 模型选择 */}
-      <div className="flex items-center gap-3">
-        <label className="text-xs shrink-0" style={{ color: 'var(--notion-text-muted)' }}>模型</label>
-        <select
-          className="input flex-1"
+    <div className="test-panel">
+      {/* Model */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)', flexShrink: 0 }}>模型</Text>
+        <Select
+          style={{ flex: 1 }}
+          size="small"
           value={model}
-          onChange={e => setModel(e.target.value)}
-        >
-          {MODELS.map(m => (
-            <option key={m.value} value={m.value}>{m.label}</option>
-          ))}
-        </select>
+          onChange={setModel}
+          options={MODEL_OPTIONS}
+        />
       </div>
 
-      {/* 变量填写 */}
+      {/* Variables */}
       {prompt.variables?.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-medium" style={{ color: 'var(--notion-text-muted)' }}>填写变量</p>
-          <div className="grid grid-cols-1 gap-2">
+        <div>
+          <Text style={{ fontSize: 12, fontWeight: 500, color: 'var(--notion-text-muted)', display: 'block', marginBottom: 8 }}>填写变量</Text>
+          <Space direction="vertical" style={{ width: '100%' }} size={8}>
             {prompt.variables.map(v => {
               const isImage = prompt.varMeta?.[v]?.type === 'image'
               return (
-                <div key={v} className="flex items-start gap-2">
-                  <label className="text-xs font-mono w-20 shrink-0 truncate pt-1.5" style={{ color: '#b45309' }}>
-                    {`{{${v}}}`}
-                  </label>
+                <div key={v} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <Text
+                    style={{ fontSize: 12, fontFamily: 'monospace', width: 80, flexShrink: 0, color: '#b45309', paddingTop: 4 }}
+                  >{`{{${v}}}`}</Text>
                   {isImage ? (
                     <ImageVarInput
                       value={varValues[v] || ''}
                       onChange={val => setVarValues(prev => ({ ...prev, [v]: val }))}
                     />
                   ) : (
-                    <input
-                      className="input flex-1"
+                    <Input
+                      size="small"
+                      style={{ flex: 1, fontSize: 12 }}
                       placeholder={`填写 ${v}`}
                       value={varValues[v] || ''}
                       onChange={e => setVarValues(prev => ({ ...prev, [v]: e.target.value }))}
@@ -273,83 +260,79 @@ export default function TestPanel({ prompt, onSaveHistory }) {
                 </div>
               )
             })}
-          </div>
+          </Space>
         </div>
       )}
 
-      {/* Prompt 预览 */}
+      {/* Preview */}
       {prompt.variables?.length > 0 && (
-        <details className="group">
-          <summary className="text-xs cursor-pointer select-none" style={{ color: 'var(--notion-text-muted)' }}>
-            预览填充后的 System Prompt ▾
-          </summary>
-          <pre className="mt-2 p-3 rounded-lg text-xs font-mono whitespace-pre-wrap overflow-auto max-h-32"
-            style={{ background: 'var(--notion-hover)', color: 'var(--notion-text-muted)', border: '1px solid var(--notion-border)' }}>
-            {previewPrompt}
-          </pre>
-        </details>
+        <Collapse
+          ghost
+          size="small"
+          items={[{
+            key: '1',
+            label: <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)' }}>预览填充后的 System Prompt</Text>,
+            children: <pre className="preview-box">{previewPrompt}</pre>,
+          }]}
+        />
       )}
 
-      {/* 用户输入 */}
+      {/* User input */}
       <div>
-        <label className="text-xs block mb-1" style={{ color: 'var(--notion-text-muted)' }}>用户消息（可选）</label>
-        <textarea
-          className="input resize-none h-20 font-mono text-xs"
+        <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)', display: 'block', marginBottom: 4 }}>用户消息（可选）</Text>
+        <TextArea
+          style={{ fontFamily: 'monospace', fontSize: 12 }}
+          rows={3}
           placeholder="输入用户消息，不填则只发 System Prompt..."
           value={userInput}
           onChange={e => setUserInput(e.target.value)}
         />
       </div>
 
-      {/* 运行按钮 */}
-      <div className="flex items-center gap-2">
+      {/* Run button */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {loading ? (
-          <button className="btn bg-red-700 hover:bg-red-600 text-white" onClick={handleStop}>
-            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-            </svg>
-            停止
-          </button>
+          <Button danger icon={<StopOutlined />} onClick={handleStop}>停止</Button>
         ) : (
-          <button className="btn-primary" onClick={handleRun} disabled={!prompt.content}>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            运行测试
-          </button>
+          <Button
+            type="primary"
+            icon={<PlayCircleOutlined />}
+            onClick={handleRun}
+            disabled={!prompt.content}
+          >运行测试</Button>
         )}
         {elapsed && !loading && (
-          <span className="text-xs" style={{ color: 'var(--notion-text-muted)' }}>{elapsed}s</span>
+          <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)' }}>{elapsed}s</Text>
         )}
       </div>
 
-      {/* 输出结果 */}
+      {/* Output */}
       {(output || error) && (
         <div>
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-xs font-medium" style={{ color: 'var(--notion-text-muted)' }}>输出结果</p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: 500, color: 'var(--notion-text-muted)' }}>输出结果</Text>
             {output && (
-              <button
-                className="text-xs hover:underline"
-                style={{ color: 'var(--notion-text-faint)' }}
+              <Button
+                type="text"
+                size="small"
+                icon={<CopyOutlined />}
                 onClick={() => navigator.clipboard.writeText(output)}
-              >复制</button>
+                style={{ fontSize: 12, color: 'var(--notion-text-faint)' }}
+              >复制</Button>
             )}
           </div>
           {error ? (
-            <div className="p-3 rounded-lg text-sm text-red-600" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
-              {error}
-            </div>
+            <div className="error-box">{error}</div>
           ) : (
-            <div
-              ref={outputRef}
-              className="p-3 rounded-lg text-sm font-mono whitespace-pre-wrap overflow-auto max-h-80 leading-relaxed"
-              style={{ background: 'var(--notion-hover)', color: 'var(--notion-text-primary)', border: '1px solid var(--notion-border)' }}
-            >
+            <div ref={outputRef} className="output-box">
               {output}
-              {loading && <span className="inline-block w-1.5 h-4 ml-0.5 animate-pulse" style={{ background: 'var(--notion-blue)' }} />}
+              {loading && (
+                <span style={{
+                  display: 'inline-block', width: 6, height: 16,
+                  marginLeft: 2, background: 'var(--notion-blue)',
+                  animation: 'pulse 1s ease-in-out infinite',
+                }} />
+              )}
             </div>
           )}
         </div>
