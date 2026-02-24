@@ -146,6 +146,78 @@ app.post('/api/chat', async (req, res) => {
   }
 })
 
+// POST /api/optimize — 调用大模型优化 prompt 内容（流式）
+app.post('/api/optimize', async (req, res) => {
+  const { content, model = 'qwen-plus' } = req.body
+
+  if (!API_KEY || API_KEY === 'your_api_key_here') {
+    return res.status(400).json({ error: '请先在 .env 文件中配置 DASHSCOPE_API_KEY' })
+  }
+  if (!content?.trim()) {
+    return res.status(400).json({ error: 'Prompt 内容不能为空' })
+  }
+
+  const messages = [
+    {
+      role: 'system',
+      content: `你是一位专业的 Prompt 工程师。用户会给你一段 Prompt，你需要对其进行优化，使其更清晰、更准确、更有效。
+优化原则：
+1. 保留原始意图和所有变量占位符（如 {{变量名}}），不要改变变量名
+2. 使指令更明确，减少歧义
+3. 适当补充背景、角色、约束等要素
+4. 保持语言风格与原文一致（中文/英文）
+5. 只输出优化后的 Prompt 内容本身，不要有任何解释或前缀`,
+    },
+    {
+      role: 'user',
+      content: `请优化以下 Prompt：\n\n${content}`,
+    },
+  ]
+
+  const body = JSON.stringify({
+    model,
+    input: { messages },
+    parameters: { result_format: 'message', incremental_output: true },
+  })
+
+  try {
+    const response = await fetch(
+      'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${API_KEY}`,
+          Accept: 'text/event-stream',
+        },
+        body,
+      }
+    )
+
+    if (!response.ok) {
+      const errText = await response.text()
+      return res.status(response.status).json({ error: errText })
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    const pump = async () => {
+      const { done, value } = await reader.read()
+      if (done) { res.write('data: [DONE]\n\n'); res.end(); return }
+      res.write(decoder.decode(value, { stream: true }))
+      pump()
+    }
+    pump()
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ─── Notion 同步 ─────────────────────────────────────────────────────────────
 
 const notionHeaders = () => ({

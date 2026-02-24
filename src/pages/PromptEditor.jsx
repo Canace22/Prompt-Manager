@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Button, Input, Select, Tag, Tabs, Typography, Space, Popconfirm, Tooltip,
+  Button, Input, Select, Tag, Tabs, Typography, Space, Popconfirm, Tooltip, Modal,
 } from 'antd'
 import {
   LeftOutlined, EllipsisOutlined, DeleteOutlined,
-  LoadingOutlined, ThunderboltOutlined, RightOutlined,
+  LoadingOutlined, ThunderboltOutlined, RightOutlined, BulbOutlined,
 } from '@ant-design/icons'
 import { getAll, getById, update, addHistory, remove } from '../store/promptStore'
 import TestPanel from '../components/TestPanel'
@@ -40,6 +40,10 @@ export default function PromptEditor({ onDataChange }) {
   const [saved, setSaved] = useState(true)
   const [pushing, setPushing] = useState(false)
   const [pushMsg, setPushMsg] = useState('')
+  const [optimizing, setOptimizing] = useState(false)
+  const [optimizeResult, setOptimizeResult] = useState('')
+  const [optimizeModalOpen, setOptimizeModalOpen] = useState(false)
+  const optimizeAbortRef = useRef(null)
 
   const reload = useCallback(async () => {
     const p = await getById(id)
@@ -108,6 +112,69 @@ export default function PromptEditor({ onDataChange }) {
     setActiveTab('edit')
   }
 
+  const handleOptimize = async () => {
+    if (!draft.content?.trim()) return
+    setOptimizeResult('')
+    setOptimizeModalOpen(true)
+    setOptimizing(true)
+
+    try {
+      optimizeAbortRef.current = new AbortController()
+      const res = await fetch('/api/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: draft.content, model: draft.model || 'qwen-plus' }),
+        signal: optimizeAbortRef.current.signal,
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let full = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop()
+
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue
+          const data = line.slice(5).trim()
+          if (data === '[DONE]') continue
+          try {
+            const json = JSON.parse(data)
+            const raw = json?.output?.choices?.[0]?.message?.content
+            const delta = Array.isArray(raw) ? raw.map(p => p.text ?? '').join('') : (raw || '')
+            full += delta
+            setOptimizeResult(full)
+          } catch { /* skip */ }
+        }
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') setOptimizeResult(`错误：${err.message}`)
+    } finally {
+      setOptimizing(false)
+    }
+  }
+
+  const handleApplyOptimized = () => {
+    setField('content', optimizeResult)
+    setOptimizeModalOpen(false)
+  }
+
+  const handleCloseOptimize = () => {
+    optimizeAbortRef.current?.abort()
+    setOptimizeModalOpen(false)
+    setOptimizing(false)
+  }
+
   const handleTagsChange = (values) => {
     setField('tags', values)
   }
@@ -139,9 +206,21 @@ export default function PromptEditor({ onDataChange }) {
             <Text style={{ fontSize: 12, color: 'var(--notion-text-faint)' }}>
               Prompt 内容 · 使用 {`{{变量名}}`} 定义变量
             </Text>
-            <Button size="small" type="primary" onClick={handleSave}>
-              {saved ? '已保存' : '保存'}
-            </Button>
+            <Space size={6}>
+              <Tooltip title="调用大模型自动优化当前 Prompt">
+                <Button
+                  size="small"
+                  icon={optimizing ? <LoadingOutlined /> : <BulbOutlined />}
+                  onClick={handleOptimize}
+                  disabled={!draft.content?.trim() || optimizing}
+                >
+                  AI 优化
+                </Button>
+              </Tooltip>
+              <Button size="small" type="primary" onClick={handleSave}>
+                {saved ? '已保存' : '保存'}
+              </Button>
+            </Space>
           </div>
           <TextArea
             style={{ fontFamily: 'monospace', fontSize: 13, lineHeight: 1.6, minHeight: 360 }}
@@ -362,6 +441,82 @@ export default function PromptEditor({ onDataChange }) {
           />
         </div>
       </div>
+
+      {/* AI 优化弹窗 */}
+      <Modal
+        title={
+          <Space>
+            <BulbOutlined style={{ color: 'var(--notion-blue)' }} />
+            AI 优化 Prompt
+            {optimizing && <LoadingOutlined style={{ color: 'var(--notion-blue)' }} />}
+          </Space>
+        }
+        open={optimizeModalOpen}
+        onCancel={handleCloseOptimize}
+        width={680}
+        footer={[
+          <Button key="cancel" onClick={handleCloseOptimize}>取消</Button>,
+          <Button
+            key="apply"
+            type="primary"
+            disabled={!optimizeResult || optimizing}
+            onClick={handleApplyOptimized}
+          >
+            应用优化结果
+          </Button>,
+        ]}
+      >
+        <div style={{ marginBottom: 12 }}>
+          <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)' }}>
+            原内容
+          </Text>
+          <pre style={{
+            marginTop: 4,
+            padding: '8px 12px',
+            background: 'var(--notion-bg-hover)',
+            borderRadius: 6,
+            fontSize: 12,
+            fontFamily: 'monospace',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            color: 'var(--notion-text-muted)',
+            maxHeight: 120,
+            overflowY: 'auto',
+          }}>
+            {draft.content}
+          </pre>
+        </div>
+        <div>
+          <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)' }}>
+            优化结果 {optimizing && <span style={{ color: 'var(--notion-blue)' }}>生成中…</span>}
+          </Text>
+          <pre style={{
+            marginTop: 4,
+            padding: '8px 12px',
+            background: 'var(--notion-surface)',
+            border: '1px solid var(--notion-border)',
+            borderRadius: 6,
+            fontSize: 12,
+            fontFamily: 'monospace',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            color: 'var(--notion-text-primary)',
+            minHeight: 120,
+            maxHeight: 320,
+            overflowY: 'auto',
+          }}>
+            {optimizeResult || (optimizing ? '' : '—')}
+            {optimizing && (
+              <span style={{
+                display: 'inline-block', width: 6, height: 14,
+                marginLeft: 2, background: 'var(--notion-blue)',
+                animation: 'pulse 1s ease-in-out infinite',
+                verticalAlign: 'middle',
+              }} />
+            )}
+          </pre>
+        </div>
+      </Modal>
     </div>
   )
 }
