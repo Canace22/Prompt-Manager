@@ -61,4 +61,4 @@ npm run dev
 
 ## 数据存储
 
-Prompt 数据持久化存储在项目根目录的 `prompts.json` 文件中，由后端服务读写，不依赖浏览器存储。
+Prompt 数据持久化存储在项目根目录的 `prompts.json` 文件中，由后端服务读写
