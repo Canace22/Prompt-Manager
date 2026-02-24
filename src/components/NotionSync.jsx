@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Button, message } from 'antd'
 import { SyncOutlined, LoadingOutlined } from '@ant-design/icons'
 
-export default function NotionSync({ onSynced }) {
+export default function NotionSync({ onSynced, iconOnly = false }) {
   const [pulling, setPulling] = useState(false)
   const [messageApi, contextHolder] = message.useMessage()
 
@@ -33,7 +33,7 @@ export default function NotionSync({ onSynced }) {
         style={{ color: 'var(--notion-text-muted)', fontSize: 12 }}
         title="从 Notion 拉取最新 Prompt"
       >
-        <span className="hidden-sm">Notion 同步</span>
+        {!iconOnly && <span className="hidden-sm">Notion 同步</span>}
       </Button>
     </>
   )

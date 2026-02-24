@@ -15,7 +15,6 @@ import {
   SortAscendingOutlined,
   TableOutlined,
 } from '@ant-design/icons'
-import NotionSync from '../components/NotionSync'
 import { getAll, remove, exportAll, importFromFile } from '../store/promptStore'
 
 const { Text } = Typography
@@ -104,7 +103,6 @@ export default function PromptList({ onDataChange, onNewPrompt }) {
             onClick={exportAll}
             style={{ color: 'var(--notion-text-muted)', fontSize: 12 }}
           >导出</Button>
-          <NotionSync onSynced={reload} />
           <div style={{ width: 1, height: 16, background: 'var(--notion-border)', margin: '0 4px' }} />
           <Button type="text" size="small" icon={<StarOutlined />} style={{ color: 'var(--notion-text-muted)' }} />
           <Button type="text" size="small" icon={<EllipsisOutlined />} style={{ color: 'var(--notion-text-muted)' }} />

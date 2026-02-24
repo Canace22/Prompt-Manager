@@ -4,6 +4,7 @@ import { Layout, Menu, Button } from 'antd'
 import { PlusOutlined, ThunderboltOutlined, SearchOutlined } from '@ant-design/icons'
 import PromptList from './pages/PromptList'
 import PromptEditor from './pages/PromptEditor'
+import NotionSync from './components/NotionSync'
 import { getAll, create } from './store/promptStore'
 
 const { Sider, Content } = Layout
@@ -30,7 +31,7 @@ function groupByCategory(prompts) {
 
 const PREVIEW_COUNT = 3
 
-function Sidebar({ prompts, onNewPrompt }) {
+function Sidebar({ prompts, onNewPrompt, onRefresh }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [expanded, setExpanded] = useState({})
@@ -49,6 +50,7 @@ function Sidebar({ prompts, onNewPrompt }) {
       <div className="sider-header">
         <div className="sider-logo">P</div>
         <span className="sider-title">Promt Manager</span>
+        <NotionSync onSynced={onRefresh} iconOnly />
       </div>
 
       <div className="sider-nav" style={{ overflowY: 'auto', flex: 1 }}>
@@ -135,7 +137,7 @@ export default function App() {
 
   return (
     <Layout style={{ height: '100vh' }}>
-      <Sidebar prompts={prompts} onNewPrompt={handleNewPrompt} />
+      <Sidebar prompts={prompts} onNewPrompt={handleNewPrompt} onRefresh={refreshPrompts} />
       <Content className="app-content">
         <Routes>
           <Route path="/" element={<PromptList onDataChange={refreshPrompts} onNewPrompt={handleNewPrompt} />} />
