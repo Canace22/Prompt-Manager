@@ -8,32 +8,41 @@ import { getAll, create } from './store/promptStore'
 
 const { Sider, Content } = Layout
 
+const CATEGORY_ORDER = ['Workflow', 'Tool', 'Role', 'Technical']
+
+function groupByCategory(prompts) {
+  const groups = {}
+  prompts.forEach(p => {
+    const category = p.tags?.[0] || '其他'
+    if (!groups[category]) groups[category] = []
+    groups[category].push(p)
+  })
+  // Sort groups by predefined order, then alphabetically for the rest
+  return Object.entries(groups).sort(([a], [b]) => {
+    const ai = CATEGORY_ORDER.indexOf(a)
+    const bi = CATEGORY_ORDER.indexOf(b)
+    if (ai === -1 && bi === -1) return a.localeCompare(b)
+    if (ai === -1) return 1
+    if (bi === -1) return -1
+    return ai - bi
+  })
+}
+
+const PREVIEW_COUNT = 3
+
 function Sidebar({ prompts, onNewPrompt }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const [expanded, setExpanded] = useState({})
 
-  const selectedKey = location.pathname === '/'
-    ? 'main'
-    : prompts.find(p => location.pathname === `/editor/${p.id}`)?.id || 'main'
+  const selectedId = location.pathname === '/'
+    ? null
+    : prompts.find(p => location.pathname === `/editor/${p.id}`)?.id || null
 
-  const menuItems = [
-    {
-      key: 'main',
-      icon: <ThunderboltOutlined />,
-      label: 'Prompt',
-      onClick: () => navigate('/'),
-    },
-    ...prompts.slice(0, 8).map(p => ({
-      key: p.id,
-      label: (
-        <span style={{ paddingLeft: 8, fontSize: 12 }}>
-          ↳ {p.name || '未命名'}
-        </span>
-      ),
-      onClick: () => navigate(`/editor/${p.id}`),
-      style: { paddingLeft: 24 },
-    })),
-  ]
+  const grouped = groupByCategory(prompts)
+
+  const toggleExpand = (category) =>
+    setExpanded(prev => ({ ...prev, [category]: !prev[category] }))
 
   return (
     <Sider width={240} className="app-sider">
@@ -42,12 +51,52 @@ function Sidebar({ prompts, onNewPrompt }) {
         <span className="sider-title">Promt Manager</span>
       </div>
 
-      <Menu
-        className="sider-nav"
-        mode="inline"
-        selectedKeys={[selectedKey]}
-        items={menuItems}
-      />
+      <div className="sider-nav" style={{ overflowY: 'auto', flex: 1 }}>
+        {/* Top-level Prompt entry */}
+        <div
+          className={`sider-item${location.pathname === '/' ? ' active' : ''}`}
+          onClick={() => navigate('/')}
+        >
+          <ThunderboltOutlined style={{ fontSize: 13 }} />
+          <span>Prompt</span>
+        </div>
+
+        {/* Grouped categories */}
+        {grouped.map(([category, items]) => {
+          const isExpanded = expanded[category]
+          const visible = isExpanded ? items : items.slice(0, PREVIEW_COUNT)
+          const hasMore = items.length > PREVIEW_COUNT
+
+          return (
+            <div key={category}>
+              {/* Category label */}
+              <div className="sider-category-label">{category}</div>
+
+              {/* Prompt rows */}
+              {visible.map(p => (
+                <div
+                  key={p.id}
+                  className={`sider-item sider-item-child${selectedId === p.id ? ' active' : ''}`}
+                  onClick={() => navigate(`/editor/${p.id}`)}
+                >
+                  <span className="sider-item-arrow">↳</span>
+                  <span className="sider-item-name">{p.name || '未命名'}</span>
+                </div>
+              ))}
+
+              {/* More / Less toggle */}
+              {hasMore && (
+                <div
+                  className="sider-item sider-item-more"
+                  onClick={() => toggleExpand(category)}
+                >
+                  {isExpanded ? '收起' : `more (${items.length - PREVIEW_COUNT})`}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
 
       <div className="sider-footer">
         <Button
