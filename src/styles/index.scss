@@ -23,6 +23,8 @@ body {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  padding: 0;
 }
 
 ::-webkit-scrollbar {
@@ -539,7 +541,7 @@ body {
     font-size: 12px;
     font-family: monospace;
     white-space: pre-wrap;
-    overflow: auto;
+    overflow: visible;
     background: var(--notion-hover);
     border: 1px solid var(--notion-border);
     color: var(--notion-text-muted);

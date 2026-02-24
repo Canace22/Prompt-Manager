@@ -1,8 +1,10 @@
 import React, { useState } from 'react'
-import { Button, Tag, Typography, Space, Empty } from 'antd'
+import { Button, Tag, Typography, Space, Empty, Tooltip, Image } from 'antd'
 import { RollbackOutlined, CopyOutlined, ClockCircleOutlined } from '@ant-design/icons'
 
 const { Text } = Typography
+
+const isBase64Image = (v) => typeof v === 'string' && v.startsWith('data:image/')
 
 const fmt = (iso) => {
   const d = new Date(iso)
@@ -71,12 +73,22 @@ export default function HistoryView({ history = [], onApplyPrompt }) {
               <div>
                 <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)', display: 'block', marginBottom: 4 }}>变量</Text>
                 <Space size={6} wrap>
-                  {Object.entries(entry.variables).map(([k, v]) => (
-                    <Tag key={k} style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                  {Object.entries(entry.variables).map(([k, v]) => isBase64Image(v) ? (
+                    <div key={k} style={{ fontFamily: 'monospace', fontSize: 12 }}>
                       <span style={{ color: '#b45309' }}>{k}</span>
                       <span style={{ color: 'var(--notion-text-faint)' }}> = </span>
-                      <span>{v || '(空)'}</span>
-                    </Tag>
+                      <Image src={v} alt={k} style={{ maxWidth: '100%', maxHeight: 200, marginTop: 4, borderRadius: 4, border: '1px solid var(--notion-border)', display: 'block', cursor: 'zoom-in' }} />
+                    </div>
+                  ) : (
+                    <Tooltip key={k} title={v || '(空)'} placement="top">
+                      <Tag style={{ fontFamily: 'monospace', fontSize: 12, maxWidth: 200, cursor: 'default' }}>
+                        <span style={{ color: '#b45309' }}>{k}</span>
+                        <span style={{ color: 'var(--notion-text-faint)' }}> = </span>
+                        <span style={{ display: 'inline-block', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>
+                          {v || '(空)'}
+                        </span>
+                      </Tag>
+                    </Tooltip>
                   ))}
                 </Space>
               </div>
@@ -85,7 +97,7 @@ export default function HistoryView({ history = [], onApplyPrompt }) {
             {/* System Prompt */}
             <div>
               <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)', display: 'block', marginBottom: 4 }}>System Prompt</Text>
-              <pre className="history-pre" style={{ maxHeight: 160 }}>
+              <pre className="history-pre">
                 {entry.systemPrompt || entry.prompt || '(空)'}
               </pre>
             </div>
@@ -94,7 +106,7 @@ export default function HistoryView({ history = [], onApplyPrompt }) {
             {entry.userInput && (
               <div>
                 <Text style={{ fontSize: 12, color: 'var(--notion-text-muted)', display: 'block', marginBottom: 4 }}>用户消息</Text>
-                <pre className="history-pre" style={{ maxHeight: 96, color: '#1d5fa8' }}>
+                <pre className="history-pre" style={{ color: '#1d5fa8' }}>
                   {entry.userInput}
                 </pre>
               </div>
@@ -112,7 +124,7 @@ export default function HistoryView({ history = [], onApplyPrompt }) {
                   style={{ fontSize: 12, color: 'var(--notion-text-faint)' }}
                 >复制</Button>
               </div>
-              <pre className="history-pre" style={{ maxHeight: 240, color: 'var(--notion-text-primary)' }}>
+              <pre className="history-pre" style={{ color: 'var(--notion-text-primary)' }}>
                 {entry.output || '(无输出)'}
               </pre>
             </div>

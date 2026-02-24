@@ -349,15 +349,6 @@ export default function PromptEditor({ onDataChange }) {
             </div>
           </div>
 
-          {/* Meta */}
-          <div className="property-row">
-            <span className="property-label">记录</span>
-            <div className="property-value">
-              <Text style={{ fontSize: 13, color: 'var(--notion-text-faint)' }}>
-                创建 {new Date(prompt.createdAt).toLocaleDateString('zh-CN')} · 更新 {new Date(prompt.updatedAt).toLocaleDateString('zh-CN')} · {prompt.history?.length || 0} 次测试
-              </Text>
-            </div>
-          </div>
         </div>
 
         {/* Tabs */}
