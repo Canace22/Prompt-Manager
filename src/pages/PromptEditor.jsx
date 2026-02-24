@@ -7,7 +7,7 @@ import {
   LeftOutlined, EllipsisOutlined, DeleteOutlined,
   LoadingOutlined, ThunderboltOutlined, RightOutlined,
 } from '@ant-design/icons'
-import { getById, update, addHistory, remove } from '../store/promptStore'
+import { getAll, getById, update, addHistory, remove } from '../store/promptStore'
 import TestPanel from '../components/TestPanel'
 import HistoryView from '../components/HistoryView'
 
@@ -36,7 +36,7 @@ export default function PromptEditor({ onDataChange }) {
   const [prompt, setPrompt] = useState(null)
   const [activeTab, setActiveTab] = useState('edit')
   const [draft, setDraft] = useState({})
-  const [tagInput, setTagInput] = useState('')
+  const [allTags, setAllTags] = useState([])
   const [saved, setSaved] = useState(true)
   const [pushing, setPushing] = useState(false)
   const [pushMsg, setPushMsg] = useState('')
@@ -57,6 +57,13 @@ export default function PromptEditor({ onDataChange }) {
   }, [id, navigate])
 
   useEffect(() => { reload() }, [reload])
+
+  useEffect(() => {
+    getAll().then(list => {
+      const tags = [...new Set(list.flatMap(p => p.tags || []))]
+      setAllTags(tags)
+    })
+  }, [])
 
   const setField = (field, value) => {
     setDraft(d => ({ ...d, [field]: value }))
@@ -101,16 +108,8 @@ export default function PromptEditor({ onDataChange }) {
     setActiveTab('edit')
   }
 
-  const handleAddTag = (e) => {
-    if (e.key === 'Enter' && tagInput.trim()) {
-      const tag = tagInput.trim()
-      if (!draft.tags.includes(tag)) setField('tags', [...draft.tags, tag])
-      setTagInput('')
-    }
-  }
-
-  const handleRemoveTag = (tag) => {
-    setField('tags', draft.tags.filter(t => t !== tag))
+  const handleTagsChange = (values) => {
+    setField('tags', values)
   }
 
   useEffect(() => {
@@ -287,25 +286,17 @@ export default function PromptEditor({ onDataChange }) {
           <div className="property-row">
             <span className="property-label" style={{ paddingTop: 4 }}>标签</span>
             <div className="property-value">
-              <Space size={6} wrap>
-                {draft.tags?.map(tag => (
-                  <Tag
-                    key={tag}
-                    closable
-                    onClose={() => handleRemoveTag(tag)}
-                    style={{ cursor: 'default' }}
-                  >{tag}</Tag>
-                ))}
-                <Input
-                  size="small"
-                  variant="borderless"
-                  style={{ fontSize: 13, color: 'var(--notion-text-muted)', width: 80, padding: 0 }}
-                  placeholder="+ 添加标签"
-                  value={tagInput}
-                  onChange={e => setTagInput(e.target.value)}
-                  onKeyDown={handleAddTag}
-                />
-              </Space>
+              <Select
+                mode="tags"
+                variant="borderless"
+                size="small"
+                style={{ minWidth: 160, fontSize: 13 }}
+                placeholder="+ 添加标签"
+                value={draft.tags || []}
+                onChange={handleTagsChange}
+                options={allTags.map(t => ({ value: t, label: t }))}
+                tokenSeparators={[',']}
+              />
             </div>
           </div>
 
