@@ -1,14 +1,25 @@
 import { v4 as uuidv4 } from 'uuid'
 
-// 解析 prompt 内容中的 {{变量名}} 占位符
+// 同时匹配 {{var}} 和 ${var} 两种占位符语法
+const VAR_PATTERN = /\{\{(\w+)\}\}|\$\{(\w+)\}/g
+
+// 解析 prompt 内容中的变量占位符（支持 {{var}} 和 ${var}）
 export const parseVariables = (content) => {
-  const matches = content.match(/\{\{(\w+)\}\}/g) || []
-  return [...new Set(matches.map(m => m.slice(2, -2)))]
+  const names = []
+  let m
+  VAR_PATTERN.lastIndex = 0
+  while ((m = VAR_PATTERN.exec(content)) !== null) {
+    names.push(m[1] ?? m[2])
+  }
+  return [...new Set(names)]
 }
 
-// 用变量值替换 prompt 内容中的占位符
+// 用变量值替换 prompt 内容中的占位符（支持 {{var}} 和 ${var}）
 export const fillVariables = (content, vars) =>
-  content.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`)
+  content.replace(VAR_PATTERN, (match, k1, k2) => {
+    const key = k1 ?? k2
+    return vars[key] ?? match
+  })
 
 const fetchAll = () =>
   fetch('/api/prompts').then(r => r.json())

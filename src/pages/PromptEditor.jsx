@@ -15,7 +15,7 @@ const pushToNotion = async (id) => {
 
 const TABS = ['编辑', '测试', '历史']
 
-export default function PromptEditor() {
+export default function PromptEditor({ onDataChange }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [prompt, setPrompt] = useState(null)
@@ -30,9 +30,16 @@ export default function PromptEditor() {
     const p = await getById(id)
     if (!p) { navigate('/'); return }
     setPrompt(p)
-    setDraft({ name: p.name, description: p.description, content: p.content, tags: p.tags || [], model: p.model })
+    setDraft({
+      name: p.name,
+      description: p.description,
+      content: p.content,
+      tags: p.tags || [],
+      model: p.model,
+      varMeta: p.varMeta || {},
+    })
     setSaved(true)
-  }, [id])
+  }, [id, navigate])
 
   useEffect(() => { reload() }, [reload])
 
@@ -42,9 +49,9 @@ export default function PromptEditor() {
   }
 
   const handleSave = async () => {
-    const updated = await update(id, draft)
-    setPrompt(updated)
+    await update(id, draft)
     setSaved(true)
+    onDataChange?.()
   }
 
   const handleDelete = async () => {
@@ -84,9 +91,7 @@ export default function PromptEditor() {
   const handleAddTag = (e) => {
     if (e.key === 'Enter' && tagInput.trim()) {
       const tag = tagInput.trim()
-      if (!draft.tags.includes(tag)) {
-        setField('tags', [...draft.tags, tag])
-      }
+      if (!draft.tags.includes(tag)) setField('tags', [...draft.tags, tag])
       setTagInput('')
     }
   }
@@ -95,7 +100,6 @@ export default function PromptEditor() {
     setField('tags', draft.tags.filter(t => t !== tag))
   }
 
-  // 自动保存（内容有变化且距上次改动 2s 后）
   useEffect(() => {
     if (saved) return
     const t = setTimeout(() => { handleSave() }, 2000)
@@ -104,74 +108,102 @@ export default function PromptEditor() {
 
   if (!prompt) return null
 
-  const variables = draft.content?.match(/\{\{(\w+)\}\}/g)?.map(m => m.slice(2, -2)) || []
+  const variables = (() => {
+    const content = draft.content || ''
+    const pattern = /\{\{(\w+)\}\}|\$\{(\w+)\}/g
+    const names = []
+    let m
+    while ((m = pattern.exec(content)) !== null) names.push(m[1] ?? m[2])
+    return [...new Set(names)]
+  })()
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* 顶栏 */}
-      <header className="sticky top-0 z-10 bg-gray-950/90 backdrop-blur border-b border-gray-800 px-4 py-2.5 flex items-center gap-3">
-        <button className="btn-ghost py-1 px-2" onClick={() => navigate('/')}>
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: 'var(--notion-surface)' }}>
+      {/* ── Breadcrumb bar ── */}
+      <header className="flex items-center justify-between px-6 py-2.5 border-b border-notion-border shrink-0" style={{ minHeight: 44 }}>
+        <div className="flex items-center gap-1.5 text-notion-sm text-notion-text-muted">
+          <button
+            className="sidebar-item px-1.5 py-0.5"
+            onClick={() => navigate('/')}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <span>⚡ Prompt</span>
+          <svg className="w-3 h-3 text-notion-text-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
-        </button>
-
-        <input
-          className="flex-1 bg-transparent text-lg font-semibold text-gray-100 focus:outline-none placeholder-gray-600"
-          value={draft.name || ''}
-          onChange={e => setField('name', e.target.value)}
-          placeholder="Prompt 名称"
-        />
-
-        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-notion-text-primary truncate max-w-48">{prompt.name}</span>
+        </div>
+        <div className="flex items-center gap-1">
           {pushMsg && (
-            <span className={`text-xs ${pushMsg.includes('失败') ? 'text-red-400' : 'text-green-400'}`}>
+            <span className={`text-xs px-2 ${pushMsg.includes('失败') ? 'text-red-400' : 'text-green-400'}`}>
               {pushMsg}
             </span>
           )}
-          <span className={`text-xs ${saved ? 'text-gray-600' : 'text-amber-400'}`}>
-            {saved ? '已保存' : '编辑中...'}
+          <span className={`text-xs px-2 ${saved ? 'text-notion-text-faint' : 'text-amber-400'}`}>
+            {saved ? 'Saved' : 'Editing...'}
           </span>
           <button
-            className="btn-ghost py-1 text-xs gap-1"
+            className="btn-ghost text-xs"
             onClick={handlePushToNotion}
             disabled={pushing}
-            title="推送到 Notion"
           >
             {pushing ? (
               <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-            ) : (
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
-              </svg>
-            )}
-            <span className="hidden sm:inline">{prompt?.notionId ? '推送 Notion' : '发布 Notion'}</span>
+            ) : '↑ Notion'}
           </button>
-          <button className="btn-primary py-1" onClick={handleSave}>保存</button>
-          <button className="btn-danger py-1" onClick={handleDelete}>删除</button>
+          <button className="btn-ghost" title="收藏">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+            </svg>
+          </button>
+          <button className="btn-ghost" title="更多">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h.01M12 12h.01M19 12h.01" />
+            </svg>
+          </button>
         </div>
       </header>
 
-      {/* 主体：左侧元信息 + 右侧内容区 */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 左侧元信息栏 */}
-        <aside className="w-52 shrink-0 border-r border-gray-800 p-4 overflow-y-auto flex flex-col gap-4">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">描述</label>
-            <textarea
-              className="input resize-none text-xs h-16"
-              placeholder="Prompt 用途描述..."
+      {/* ── Page content ── */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Title area */}
+        <div className="px-16 pt-12 pb-2">
+          <input
+            className="w-full bg-transparent text-4xl font-bold text-notion-text-primary focus:outline-none placeholder-notion-text-faint"
+            style={{ fontWeight: 700 }}
+            value={draft.name || ''}
+            onChange={e => setField('name', e.target.value)}
+            placeholder="Untitled"
+          />
+        </div>
+
+        {/* Properties block */}
+        <div className="px-16 py-4 border-b border-notion-border space-y-2">
+          {/* Description property */}
+          <div className="flex items-start gap-6">
+            <span className="text-notion-sm text-notion-text-faint w-28 shrink-0 pt-0.5">描述</span>
+            <input
+              className="flex-1 bg-transparent text-notion-sm text-notion-text-primary focus:outline-none placeholder-notion-text-faint"
+              placeholder="Add a description..."
               value={draft.description || ''}
               onChange={e => setField('description', e.target.value)}
             />
           </div>
 
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">默认模型</label>
-            <select className="input text-xs" value={draft.model || 'qwen-turbo'} onChange={e => setField('model', e.target.value)}>
+          {/* Model property */}
+          <div className="flex items-center gap-6">
+            <span className="text-notion-sm text-notion-text-faint w-28 shrink-0">模型</span>
+            <select
+              className="bg-transparent text-notion-sm text-notion-text-primary focus:outline-none cursor-pointer"
+              value={draft.model || 'qwen-turbo'}
+              onChange={e => setField('model', e.target.value)}
+            >
               <option value="qwen-turbo">qwen-turbo</option>
               <option value="qwen-plus">qwen-plus</option>
               <option value="qwen-max">qwen-max</option>
@@ -179,73 +211,94 @@ export default function PromptEditor() {
             </select>
           </div>
 
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">标签</label>
-            <div className="flex flex-wrap gap-1 mb-1.5">
+          {/* Tags property */}
+          <div className="flex items-start gap-6">
+            <span className="text-notion-sm text-notion-text-faint w-28 shrink-0 pt-1">标签</span>
+            <div className="flex flex-wrap gap-1.5 flex-1">
               {draft.tags?.map(tag => (
                 <span
                   key={tag}
-                  className="tag cursor-pointer hover:bg-red-900/40 hover:text-red-300 hover:border-red-800/50"
+                  className="tag tag-default cursor-pointer hover:opacity-70 transition-opacity"
                   onClick={() => handleRemoveTag(tag)}
                   title="点击移除"
                 >{tag} ×</span>
               ))}
+              <input
+                className="bg-transparent text-notion-sm text-notion-text-muted focus:outline-none placeholder-notion-text-faint min-w-16"
+                placeholder="+ 添加标签"
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={handleAddTag}
+              />
             </div>
-            <input
-              className="input text-xs"
-              placeholder="输入标签按回车"
-              value={tagInput}
-              onChange={e => setTagInput(e.target.value)}
-              onKeyDown={handleAddTag}
-            />
           </div>
 
+          {/* Variables property */}
           {variables.length > 0 && (
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">检测到的变量</label>
-              <div className="flex flex-wrap gap-1">
-                {variables.map(v => (
-                  <span key={v} className="text-xs font-mono px-2 py-0.5 rounded-md bg-amber-900/40 text-amber-300 border border-amber-800/40">
-                    {`{{${v}}}`}
-                  </span>
-                ))}
+            <div className="flex items-start gap-6">
+              <span className="text-notion-sm text-notion-text-faint w-28 shrink-0 pt-1">变量</span>
+              <div className="flex flex-wrap gap-1.5">
+                {variables.map(v => {
+                  const isImage = draft.varMeta?.[v]?.type === 'image'
+                  return (
+                    <button
+                      key={v}
+                      className={`text-xs px-2 py-0.5 rounded-md font-mono border transition-colors ${isImage ? 'border-blue-300 text-blue-700' : 'border-amber-300 text-amber-700'}`}
+                      style={{ background: isImage ? '#dbeafe' : '#fef3c7' }}
+                      onClick={() => {
+                        const next = { ...(draft.varMeta || {}) }
+                        next[v] = { type: isImage ? 'text' : 'image' }
+                        setField('varMeta', next)
+                      }}
+                      title={isImage ? '切换为文本' : '切换为图片'}
+                    >
+                      {`{{${v}}}`} {isImage ? '🖼' : 'T'}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}
 
-          <div className="mt-auto pt-4 border-t border-gray-800 text-xs text-gray-600 space-y-1">
-            <p>创建：{new Date(prompt.createdAt).toLocaleDateString('zh-CN')}</p>
-            <p>更新：{new Date(prompt.updatedAt).toLocaleDateString('zh-CN')}</p>
-            <p>{prompt.history?.length || 0} 次测试记录</p>
-            {prompt.notionId && (
+          {/* Notion sync status */}
+          <div className="flex items-center gap-6">
+            <span className="text-notion-sm text-notion-text-faint w-28 shrink-0">Notion</span>
+            {prompt.notionId ? (
               <a
                 href={`https://www.notion.so/${prompt.notionId.replace(/-/g, '')}`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1 text-indigo-500 hover:text-indigo-400 mt-1"
+                className="text-notion-sm text-notion-blue-text hover:underline flex items-center gap-1"
+                onClick={e => e.stopPropagation()}
               >
-                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M4.7 2h14.6C20.8 2 22 3.2 22 4.7v14.6c0 1.5-1.2 2.7-2.7 2.7H4.7C3.2 22 2 20.8 2 19.3V4.7C2 3.2 3.2 2 4.7 2zm2.1 3.5c-.4.3-.6.8-.5 1.2l.1.3 5.8 7.8V18c0 .6.4 1 1 1h.1c.5 0 1-.4 1-1v-3.5l5.6-7.7.1-.3c.1-.4-.1-.9-.5-1.2-.3-.2-.7-.3-1.1-.1l-5.1 3.5-5.2-3.5c-.3-.2-.8-.2-1.1.1l-.2.2z"/>
-                </svg>
-                在 Notion 查看
+                在 Notion 查看 ↗
               </a>
+            ) : (
+              <span className="text-notion-sm text-notion-text-faint">未同步</span>
             )}
           </div>
-        </aside>
 
-        {/* 右侧主区 */}
-        <main className="flex-1 flex flex-col min-w-0">
-          {/* Tab 切换 */}
-          <div className="border-b border-gray-800 px-4 flex items-center gap-0">
+          {/* Meta */}
+          <div className="flex items-center gap-6">
+            <span className="text-notion-sm text-notion-text-faint w-28 shrink-0">记录</span>
+            <span className="text-notion-sm text-notion-text-faint">
+              创建 {new Date(prompt.createdAt).toLocaleDateString('zh-CN')} · 更新 {new Date(prompt.updatedAt).toLocaleDateString('zh-CN')} · {prompt.history?.length || 0} 次测试
+            </span>
+          </div>
+        </div>
+
+        {/* ── Tab area ── */}
+        <div className="px-16">
+          <div className="flex items-center gap-0 border-b border-notion-border mt-4">
             {TABS.map(tab => (
               <button
                 key={tab}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === tab ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
+                className={`view-tab ${activeTab === tab ? 'active' : ''}`}
                 onClick={() => setActiveTab(tab)}
               >
                 {tab}
-                {tab === '历史' && prompt.history?.length > 0 && (
-                  <span className="ml-1.5 text-xs bg-gray-700 px-1.5 py-0.5 rounded-full text-gray-400">
+                {tab === '历史' && (prompt.history?.length || 0) > 0 && (
+                  <span className="ml-1 text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--notion-hover)', color: 'var(--notion-text-faint)' }}>
                     {prompt.history.length}
                   </span>
                 )}
@@ -253,42 +306,46 @@ export default function PromptEditor() {
             ))}
           </div>
 
-          {/* 编辑 Tab */}
+          {/* Editor */}
           {activeTab === '编辑' && (
-            <div className="flex-1 p-4 flex flex-col">
+            <div className="py-4">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs text-gray-500">System Prompt 内容</label>
-                <span className="text-xs text-gray-600">使用 {`{{变量名}}`} 定义变量</span>
+                <span className="text-xs text-notion-text-faint">Prompt 内容 · 使用 {`{{变量名}}`} 定义变量</span>
+                <div className="flex items-center gap-2">
+                  <button className="btn-primary text-xs" onClick={handleSave}>
+                    {saved ? '已保存' : '保存'}
+                  </button>
+                  <button className="btn-danger text-xs" onClick={handleDelete}>删除</button>
+                </div>
               </div>
               <textarea
-                className="input flex-1 font-mono text-sm leading-relaxed resize-none"
-                placeholder="在这里编写你的 Prompt...\n\n支持 {{变量名}} 占位符，在测试时填写具体值。\n\n示例：你是一个专业的{{role}}，请用{{language}}回答用户问题。"
+                className="input font-mono text-sm leading-relaxed resize-none"
+                style={{ minHeight: 360 }}
+                placeholder={'在这里编写你的 Prompt...\n\n支持 {{变量名}} 占位符，在测试时填写具体值。\n\n示例：你是一个专业的{{role}}，请用{{language}}回答用户问题。'}
                 value={draft.content || ''}
                 onChange={e => setField('content', e.target.value)}
               />
             </div>
           )}
 
-          {/* 测试 Tab */}
           {activeTab === '测试' && (
-            <div className="flex-1 p-4 overflow-y-auto">
+            <div className="py-4 overflow-y-auto">
               <TestPanel
-                prompt={{ ...prompt, ...draft, variables }}
+                prompt={{ ...prompt, ...draft, variables, varMeta: draft.varMeta || {} }}
                 onSaveHistory={handleSaveHistory}
               />
             </div>
           )}
 
-          {/* 历史 Tab */}
           {activeTab === '历史' && (
-            <div className="flex-1 p-4 overflow-hidden flex flex-col">
+            <div className="py-4 overflow-hidden flex flex-col">
               <HistoryView
                 history={prompt.history || []}
                 onApplyPrompt={handleApplyPrompt}
               />
             </div>
           )}
-        </main>
+        </div>
       </div>
     </div>
   )

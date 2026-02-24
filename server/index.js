@@ -28,7 +28,7 @@ const NOTION_TOKEN = process.env.NOTION_TOKEN || ''
 const NOTION_DB_ID = process.env.NOTION_DATABASE_ID || '1b441c9133c580aab50ff82be3ea8a14'
 
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '20mb' }))
 
 const DATA_FILE = join(__dirname, '..', 'prompts.json')
 
@@ -59,7 +59,25 @@ app.put('/api/prompts', (req, res) => {
   res.json({ ok: true })
 })
 
-// 千问 API 中转（支持流式输出）
+// 检测 messages 是否包含图片（user message content 为数组且含 image_url）
+const hasImageContent = (messages) =>
+  messages.some(m => Array.isArray(m.content) && m.content.some(p => p.type === 'image_url'))
+
+// 将前端多模态格式转换为 DashScope 多模态格式
+// 前端: [{type:'image_url', image_url:{url:'...'}}]
+// DashScope: [{image:'...'}, {text:'...'}]
+const toMultimodalMessages = (messages) =>
+  messages.map(m => {
+    if (!Array.isArray(m.content)) return m
+    const content = m.content.map(p => {
+      if (p.type === 'image_url') return { image: p.image_url.url }
+      if (p.type === 'text') return { text: p.text }
+      return p
+    })
+    return { ...m, content }
+  })
+
+// 千问 API 中转（支持流式输出，自动区分文本/多模态）
 app.post('/api/chat', async (req, res) => {
   const { model = 'qwen-turbo', messages, stream = true } = req.body
 
@@ -67,12 +85,23 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: '请先在 .env 文件中配置 DASHSCOPE_API_KEY' })
   }
 
-  const body = JSON.stringify({ model, input: { messages }, parameters: { result_format: 'message', incremental_output: stream } })
+  const isMultimodal = hasImageContent(messages)
+  const endpoint = isMultimodal
+    ? 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
+    : 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation'
+
+  const finalMessages = isMultimodal ? toMultimodalMessages(messages) : messages
+  // 多模态模型固定用 qwen-vl-plus，文本模型用用户选择的
+  const finalModel = isMultimodal ? 'qwen-vl-plus' : model
+
+  const body = JSON.stringify({
+    model: finalModel,
+    input: { messages: finalMessages },
+    parameters: { result_format: 'message', incremental_output: stream },
+  })
 
   try {
-    const response = await fetch(
-      'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
-      {
+    const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
