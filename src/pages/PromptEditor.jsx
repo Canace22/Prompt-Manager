@@ -4,7 +4,7 @@ import {
   Button, Input, Select, Tag, Tabs, Typography, Space, Popconfirm, Tooltip,
 } from 'antd'
 import {
-  LeftOutlined, StarOutlined, EllipsisOutlined, DeleteOutlined,
+  LeftOutlined, EllipsisOutlined, DeleteOutlined,
   LoadingOutlined, ThunderboltOutlined, RightOutlined,
 } from '@ant-design/icons'
 import { getById, update, addHistory, remove } from '../store/promptStore'
@@ -140,20 +140,9 @@ export default function PromptEditor({ onDataChange }) {
             <Text style={{ fontSize: 12, color: 'var(--notion-text-faint)' }}>
               Prompt 内容 · 使用 {`{{变量名}}`} 定义变量
             </Text>
-            <Space size={8}>
-              <Button size="small" type="primary" onClick={handleSave}>
-                {saved ? '已保存' : '保存'}
-              </Button>
-              <Popconfirm
-                title={`确认删除「${prompt.name}」？`}
-                onConfirm={handleDelete}
-                okText="删除"
-                cancelText="取消"
-                okButtonProps={{ danger: true }}
-              >
-                <Button size="small" danger>删除</Button>
-              </Popconfirm>
-            </Space>
+            <Button size="small" type="primary" onClick={handleSave}>
+              {saved ? '已保存' : '保存'}
+            </Button>
           </div>
           <TextArea
             style={{ fontFamily: 'monospace', fontSize: 13, lineHeight: 1.6, minHeight: 360 }}
@@ -236,7 +225,16 @@ export default function PromptEditor({ onDataChange }) {
           >
             {!pushing && '↑ Notion'}
           </Button>
-          <Button type="text" size="small" icon={<StarOutlined />} style={{ color: 'var(--notion-text-muted)' }} />
+          <Popconfirm
+            title={`确认删除「${prompt.name}」？`}
+            onConfirm={handleDelete}
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            placement="bottomRight"
+          >
+            <Button type="text" size="small" icon={<DeleteOutlined />} danger />
+          </Popconfirm>
           <Button type="text" size="small" icon={<EllipsisOutlined />} style={{ color: 'var(--notion-text-muted)' }} />
         </div>
       </header>
