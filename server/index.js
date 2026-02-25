@@ -7,25 +7,38 @@ import { dirname, join } from 'path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// 手动加载 .env（避免额外依赖 dotenv 的 esm 版本问题）
-try {
-  const envPath = join(__dirname, '..', '.env')
-  const envContent = readFileSync(envPath, 'utf-8')
-  envContent.split('\n').forEach(line => {
-    const [key, ...vals] = line.trim().split('=')
-    if (key && !key.startsWith('#')) {
-      process.env[key] = vals.join('=')
-    }
-  })
-} catch {
-  // .env 不存在时忽略
+const ENV_FILE = join(__dirname, '..', '.env')
+
+// 实时读取 .env，每次请求时调用，无需重启服务
+const parseEnvFile = (path) => {
+  try {
+    const result = {}
+    readFileSync(path, 'utf-8').split('\n').forEach(line => {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) return
+      const idx = trimmed.indexOf('=')
+      if (idx === -1) return
+      result[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim()
+    })
+    return result
+  } catch {
+    return {}
+  }
+}
+
+const getConfig = () => {
+  // 优先读 .env 文件（Settings 页写入），读不到时回退到环境变量（Docker env_file 注入）
+  const file = parseEnvFile(ENV_FILE)
+  const get = (key) => file[key] || process.env[key] || ''
+  return {
+    API_KEY: get('DASHSCOPE_API_KEY'),
+    NOTION_TOKEN: get('NOTION_TOKEN'),
+    NOTION_DB_ID: get('NOTION_DATABASE_ID'),
+  }
 }
 
 const app = express()
-const PORT = process.env.PORT || 3001
-const API_KEY = process.env.DASHSCOPE_API_KEY || ''
-const NOTION_TOKEN = process.env.NOTION_TOKEN || ''
-const NOTION_DB_ID = process.env.NOTION_DATABASE_ID || '1b441c9133c580aab50ff82be3ea8a14'
+const PORT = parseEnvFile(ENV_FILE).PORT || 3001
 
 app.use(cors())
 app.use(express.json({ limit: '20mb' }))
@@ -43,6 +56,7 @@ const writeData = (data) => {
 
 // 健康检查
 app.get('/api/health', (req, res) => {
+  const { API_KEY } = getConfig()
   res.json({ ok: true, hasKey: !!API_KEY && API_KEY !== 'your_api_key_here' })
 })
 
@@ -80,9 +94,10 @@ const toMultimodalMessages = (messages) =>
 // 千问 API 中转（支持流式输出，自动区分文本/多模态）
 app.post('/api/chat', async (req, res) => {
   const { model = 'qwen-turbo', messages, stream = true } = req.body
+  const { API_KEY } = getConfig()
 
   if (!API_KEY || API_KEY === 'your_api_key_here') {
-    return res.status(400).json({ error: '请先在 .env 文件中配置 DASHSCOPE_API_KEY' })
+    return res.status(400).json({ error: '请先在设置中配置 DASHSCOPE_API_KEY' })
   }
 
   const isMultimodal = hasImageContent(messages)
@@ -149,9 +164,10 @@ app.post('/api/chat', async (req, res) => {
 // POST /api/optimize — 调用大模型优化 prompt 内容（流式）
 app.post('/api/optimize', async (req, res) => {
   const { content, model = 'qwen-plus' } = req.body
+  const { API_KEY } = getConfig()
 
   if (!API_KEY || API_KEY === 'your_api_key_here') {
-    return res.status(400).json({ error: '请先在 .env 文件中配置 DASHSCOPE_API_KEY' })
+    return res.status(400).json({ error: '请先在设置中配置 DASHSCOPE_API_KEY' })
   }
   if (!content?.trim()) {
     return res.status(400).json({ error: 'Prompt 内容不能为空' })
@@ -221,7 +237,7 @@ app.post('/api/optimize', async (req, res) => {
 // ─── Notion 同步 ─────────────────────────────────────────────────────────────
 
 const notionHeaders = () => ({
-  'Authorization': `Bearer ${NOTION_TOKEN}`,
+  'Authorization': `Bearer ${getConfig().NOTION_TOKEN}`,
   'Notion-Version': '2022-06-28',
   'Content-Type': 'application/json',
 })
@@ -286,6 +302,7 @@ const localToNotionContent = (content) =>
 
 // 从 Notion 数据库拉取所有 Prompt（含正文）
 const fetchNotionPrompts = async () => {
+  const { NOTION_DB_ID } = getConfig()
   const r = await fetch(`https://api.notion.com/v1/databases/${NOTION_DB_ID}/query`, {
     method: 'POST',
     headers: notionHeaders(),
@@ -306,6 +323,7 @@ const fetchNotionPrompts = async () => {
 
 // 在 Notion 创建新 page
 const createNotionPage = async (prompt) => {
+  const { NOTION_DB_ID } = getConfig()
   const notionContent = localToNotionContent(prompt.content || '')
   const category = prompt.tags?.[0]
   const validCategories = ['Technical', 'Role', 'Tool', 'Workflow']
@@ -390,8 +408,9 @@ const updateNotionPage = async (notionId, prompt) => {
 
 // GET /api/notion/sync — 从 Notion 拉取并合并到本地
 app.get('/api/notion/sync', async (req, res) => {
+  const { NOTION_TOKEN } = getConfig()
   if (!NOTION_TOKEN || NOTION_TOKEN === 'your_notion_token_here') {
-    return res.status(400).json({ error: '请先在 .env 中配置 NOTION_TOKEN' })
+    return res.status(400).json({ error: '请先在设置中配置 NOTION_TOKEN' })
   }
   try {
     const notionPrompts = await fetchNotionPrompts()
@@ -429,8 +448,9 @@ app.get('/api/notion/sync', async (req, res) => {
 
 // POST /api/notion/push — 将本地指定 prompt 推送到 Notion
 app.post('/api/notion/push', async (req, res) => {
+  const { NOTION_TOKEN } = getConfig()
   if (!NOTION_TOKEN || NOTION_TOKEN === 'your_notion_token_here') {
-    return res.status(400).json({ error: '请先在 .env 中配置 NOTION_TOKEN' })
+    return res.status(400).json({ error: '请先在设置中配置 NOTION_TOKEN' })
   }
   const { id } = req.body
   try {
@@ -454,9 +474,35 @@ app.post('/api/notion/push', async (req, res) => {
   }
 })
 
+// ─── 配置管理（读写 .env） ────────────────────────────────────────────────────
+
+const CONFIG_KEYS = ['DASHSCOPE_API_KEY', 'NOTION_TOKEN', 'NOTION_DATABASE_ID', 'ADMIN_PASSWORD']
+
+const serializeEnv = (obj) =>
+  Object.entries(obj).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
+
+app.get('/api/config', (req, res) => {
+  const file = parseEnvFile(ENV_FILE)
+  const data = {}
+  CONFIG_KEYS.forEach(k => { data[k] = file[k] || process.env[k] || '' })
+  res.json(data)
+})
+
+app.post('/api/config', (req, res) => {
+  const updates = req.body || {}
+  const raw = parseEnvFile(ENV_FILE)
+  CONFIG_KEYS.forEach(k => {
+    if (k in updates) raw[k] = updates[k]
+  })
+  // 保留非托管字段（如 PORT）
+  writeFileSync(ENV_FILE, serializeEnv(raw), 'utf-8')
+  res.json({ ok: true })
+})
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 createServer(app).listen(PORT, () => {
   console.log(`[server] 运行在 http://localhost:${PORT}`)
-  console.log(`[server] API Key: ${API_KEY ? (API_KEY === 'your_api_key_here' ? '未配置' : '已配置') : '未配置'}`)
+  const { API_KEY } = getConfig()
+  console.log(`[server] API Key: ${API_KEY && API_KEY !== 'your_api_key_here' ? '已配置' : '未配置'}`)
 })

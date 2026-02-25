@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Menu, Button } from 'antd'
-import { PlusOutlined, ThunderboltOutlined, SearchOutlined } from '@ant-design/icons'
+import { PlusOutlined, ThunderboltOutlined, SettingOutlined } from '@ant-design/icons'
 import PromptList from './pages/PromptList'
 import PromptEditor from './pages/PromptEditor'
+import Settings from './pages/Settings'
 import NotionSync from './components/NotionSync'
 import { getAll, create } from './store/promptStore'
 
@@ -101,6 +102,13 @@ function Sidebar({ prompts, onNewPrompt, onRefresh }) {
       </div>
 
       <div className="sider-footer">
+        <div
+          className={`sider-item${location.pathname === '/settings' ? ' active' : ''}`}
+          onClick={() => navigate('/settings')}
+        >
+          <SettingOutlined style={{ fontSize: 13 }} />
+          <span>Settings</span>
+        </div>
         <Button
           type="text"
           icon={<PlusOutlined />}
@@ -142,6 +150,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<PromptList onDataChange={refreshPrompts} onNewPrompt={handleNewPrompt} />} />
           <Route path="/editor/:id" element={<PromptEditor onDataChange={refreshPrompts} />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </Content>
     </Layout>

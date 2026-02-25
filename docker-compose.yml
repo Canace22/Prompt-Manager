@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    ports:
+      - "7777:80"
+    volumes:
+      - prompts_data:/data
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  prompts_data:

@@ -59,6 +59,40 @@ npm run dev
 - Notion 数据库需包含以下属性：`Name`（title）、`Description`（rich_text）、`Category`（select）、`Status`（status）。
 - 支持的 Category 值：`Technical`、`Role`、`Tool`、`Workflow`。
 
+## Docker 部署
+
+### 快速启动
+
+```bash
+# 1. 配置环境变量
+cp .env.example .env
+# 编辑 .env，填写 API Key 等配置
+
+# 2. 构建并启动
+docker compose up -d
+
+# 访问 http://localhost:7777
+```
+
+### 常用命令
+
+```bash
+# 查看日志
+docker compose logs -f
+
+# 停止
+docker compose down
+
+# 重新构建（代码更新后）
+docker compose up -d --build
+```
+
+### 说明
+
+- 前端静态文件由 Nginx 服务，API 请求反代到内置 Express 服务
+- 数据文件 `prompts.json` 持久化到 Docker volume `prompts_data`，容器销毁后数据不丢失
+- 默认端口 `7777`，可在 `docker-compose.yml` 中修改 `ports` 配置
+
 ## 数据存储
 
-Prompt 数据持久化存储在项目根目录的 `prompts.json` 文件中，由后端服务读写
+Prompt 数据持久化存储在项目根目录的 `prompts.json` 文件中，由后端服务读写。Docker 部署时存储在 volume `/data/prompts.json`。
